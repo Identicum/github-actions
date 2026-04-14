@@ -23,7 +23,7 @@ jobs:
         id: bump
         run: |
           python3 - <<'EOF'
-          import re
+          import re, os
 
           with open("setup.py", "r") as f:
               content = f.read()
@@ -43,7 +43,7 @@ jobs:
 
           print(f"Bumped: {current} -> {new_version}")
 
-          with open("$GITHUB_OUTPUT", "a") as out:
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"old_version={current}\n")
               out.write(f"new_version={new_version}\n")
           EOF
