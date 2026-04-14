@@ -1,0 +1,82 @@
+name: python-library-release
+
+on:
+  workflow_call:
+
+jobs:
+  bump-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Bump patch version in setup.py
+        id: bump
+        run: |
+          python3 - <<'EOF'
+          import re
+
+          with open("setup.py", "r") as f:
+              content = f.read()
+
+          match = re.search(r"version='(\d+\.\d+\.\d+)'", content)
+          if not match:
+              raise ValueError("Could not find version string in setup.py")
+
+          current = match.group(1)
+          major, minor, patch = current.split(".")
+          new_version = f"{major}.{minor}.{int(patch) + 1}"
+
+          updated = content.replace(f"version='{current}'", f"version='{new_version}'")
+
+          with open("setup.py", "w") as f:
+              f.write(updated)
+
+          print(f"Bumped: {current} -> {new_version}")
+
+          with open("$GITHUB_OUTPUT", "a") as out:
+              out.write(f"old_version={current}\n")
+              out.write(f"new_version={new_version}\n")
+          EOF
+
+      - name: Commit bumped version
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add setup.py
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: Create Git tag
+        run: |
+          git tag "v${{ steps.bump.outputs.new_version }}"
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.new_version }}"
+          name: "v${{ steps.bump.outputs.new_version }}"
+          body: |
+            Automatically released on push to `main`.
+
+            ### Install this version
+            ```bash
+            python3 -m pip install git+https://github.com/${{ github.repository }}.git@v${{ steps.bump.outputs.new_version }}
+            ```
+
+            ### Always use latest
+            ```bash
+            python3 -m pip install --upgrade git+https://github.com/${{ github.repository }}.git@main
+            ```
+          draft: false
+          prerelease: false
