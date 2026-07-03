@@ -46,7 +46,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.file }}
           build-args: |
-            GITHUB_TOKEN=${{ secrets.ACTIONS_TOKEN_ORG }}
+            ACTIONS_TOKEN_ORG=${{ secrets.ACTIONS_TOKEN_ORG }}
 
   cleanup:
     runs-on: ubuntu-latest
