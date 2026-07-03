@@ -1,0 +1,85 @@
+name: midpoint-connector-release
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        type: string
+        default: '21'
+      java-distribution:
+        type: string
+        default: 'temurin'
+
+jobs:
+  bump-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+
+      - name: Get current version
+        id: current
+        run: |
+          version=$(mvn -q -DforceStdout org.apache.maven.plugins:maven-help-plugin:3.5.0:evaluate -Dexpression=project.version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Bump build number in pom.xml
+        id: bump
+        run: |
+          # Version scheme: <base>-<build>, e.g. 1.4.2.20-0 -> 1.4.2.20-1
+          current="${{ steps.current.outputs.version }}"
+          base="${current%-*}"
+          build="${current##*-}"
+          new_version="${base}-$((build + 1))"
+
+          mvn -q -B org.codehaus.mojo:versions-maven-plugin:2.17.1:set \
+            -DnewVersion="$new_version" -DgenerateBackupPoms=false
+
+          echo "old_version=$current" >> "$GITHUB_OUTPUT"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit bumped version
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: Create Git tag
+        run: |
+          git tag "v${{ steps.bump.outputs.new_version }}"
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Build jar
+        run: mvn -B clean package
+
+      - name: Locate built jar
+        id: artifact
+        run: |
+          jar_path=$(find . -path '*/target/*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)
+          echo "jar_path=$jar_path" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: "v${{ steps.bump.outputs.new_version }}"
+          name: "v${{ steps.bump.outputs.new_version }}"
+          files: ${{ steps.artifact.outputs.jar_path }}
+          body: |
+            Automatically released on push to `main`.
+
+            Download the `.jar` from this release's assets.
+          draft: false
+          prerelease: false
