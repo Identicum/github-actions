@@ -15,6 +15,9 @@ on:
       image_name:
         type: string
         required: true
+    secrets:
+      ACTIONS_TOKEN_ORG:
+        required: false
 
 jobs:
   build-and-push:
@@ -42,6 +45,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.file }}
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.ACTIONS_TOKEN_ORG }}
 
   cleanup:
     runs-on: ubuntu-latest
