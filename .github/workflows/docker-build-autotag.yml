@@ -16,7 +16,7 @@ on:
         type: string
         required: true
     secrets:
-      ACTIONS_TOKEN_ORG:
+      PRIVATE_REPO_TOKEN:
         required: false
 
 jobs:
@@ -45,8 +45,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.file }}
-          build-args: |
-            ACTIONS_TOKEN_ORG=${{ secrets.ACTIONS_TOKEN_ORG }}
+          secrets: |
+            private_repo_token=${{ secrets.PRIVATE_REPO_TOKEN }}
 
   cleanup:
     runs-on: ubuntu-latest
