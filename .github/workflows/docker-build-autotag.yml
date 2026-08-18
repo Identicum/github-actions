@@ -15,8 +15,14 @@ on:
       image_name:
         type: string
         required: true
+      app_client_id:
+        type: string
+        required: false
+        default: ""
     secrets:
       PRIVATE_REPO_TOKEN:
+        required: false
+      APP_PRIVATE_KEY:
         required: false
 
 jobs:
@@ -24,6 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Generate token with GitHub App (e.g. connector-reader)
+        id: app-token
+        if: inputs.app_client_id != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
       - uses: docker/metadata-action@v6
         id: meta
         with:
@@ -46,7 +60,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.file }}
           secrets: |
-            private_repo_token=${{ secrets.PRIVATE_REPO_TOKEN }}
+            private_repo_token=${{ steps.app-token.outputs.token || secrets.PRIVATE_REPO_TOKEN }}
 
   cleanup:
     runs-on: ubuntu-latest
