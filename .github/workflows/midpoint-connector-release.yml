@@ -68,7 +68,7 @@ jobs:
       - name: Locate built jar
         id: artifact
         run: |
-          jar_path=$(find . -path '*/target/*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)
+          jar_path=$(find . -path '*/target/*.jar' ! -path '*/archive-tmp/*' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)
           echo "jar_path=$jar_path" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
