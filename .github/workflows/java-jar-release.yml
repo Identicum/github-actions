@@ -69,10 +69,15 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
-      - name: Setup git user
+      - name: Setup git user and auth
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@identicum.com"
+          # release:perform hace un 'git clone' nuevo (target/checkout) que NO hereda las
+          # credenciales que persiste actions/checkout; inyectamos el token para github.com https.
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release (prepare + perform)
         run: mvn -B ${{ inputs.skip-tests && '-DskipTests' || '' }} clean release:prepare release:perform
