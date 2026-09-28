@@ -1,0 +1,107 @@
+name: java-war-release
+
+# Reusable: publica un WAR Maven versionado.
+#   - mvn release:prepare -> quita el -SNAPSHOT, commitea, taggea vX.Y.Z y bumpea a la siguiente -SNAPSHOT
+#   - mvn release:perform -> checkout del tag y 'mvn deploy' a GitHub Packages (registry Maven)
+#   - sube el WAR al GitHub Release vX.Y.Z
+# El caller aporta el trigger (push a main) y las permissions.
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        type: string
+        default: '25'
+      java-distribution:
+        type: string
+        default: 'temurin'
+      skip-tests:
+        type: boolean
+        default: false
+      changelog-path:
+        type: string
+        default: 'CHANGELOG.md'   # de aca se extrae la seccion de la version -> descripcion del Release
+      generate-release-notes:
+        type: boolean
+        default: false            # true -> ademas anexa las notas autogeneradas por GitHub (PRs/commits)
+
+jobs:
+  publish:
+    name: Publish versioned WAR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push del bump/tag y creacion del GitHub Release
+      packages: write   # deploy a GitHub Packages (Maven registry)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Setup git user and auth
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@identicum.com"
+          # release:perform hace un 'git clone' nuevo (target/checkout) que NO hereda las
+          # credenciales que persiste actions/checkout; inyectamos el token para github.com https.
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release (prepare + perform)
+        run: mvn -B ${{ inputs.skip-tests && '-DskipTests' || '' }} clean release:prepare release:perform
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve released version and WAR path
+        id: artifact
+        run: |
+          VERSION=$(git describe --tags --abbrev=0)      # ej: v1.0.0
+          NUM=${VERSION#v}                                # ej: 1.0.0
+          WAR=$(find target/checkout/target -maxdepth 1 -name '*.war' \
+                  ! -name '*-sources.war' ! -name '*-javadoc.war' | head -n1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "num=$NUM" >> "$GITHUB_OUTPUT"
+          echo "war=$WAR" >> "$GITHUB_OUTPUT"
+
+      # Extrae del CHANGELOG.md la seccion "## [<version>]" (hasta el proximo "## [" o "---"),
+      # recorta lineas en blanco sobrantes y la deja en RELEASE_NOTES.md como cuerpo del Release.
+      - name: Build release notes from CHANGELOG
+        run: |
+          CHANGELOG="${{ inputs.changelog-path }}"
+          NUM="${{ steps.artifact.outputs.num }}"
+          if [ -f "$CHANGELOG" ]; then
+            awk -v ver="$NUM" '
+              index($0, "## [" ver "]") == 1 { found=1; next }
+              found && (/^## \[/ || /^---[[:space:]]*$/) { exit }
+              found { buf[n++]=$0 }
+              END {
+                s=0;   while (s<n   && buf[s] ~ /^[[:space:]]*$/) s++
+                e=n-1; while (e>=s  && buf[e] ~ /^[[:space:]]*$/) e--
+                for (i=s;i<=e;i++) print buf[i]
+              }
+            ' "$CHANGELOG" > RELEASE_NOTES.md
+          fi
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "Release ${{ steps.artifact.outputs.version }}" > RELEASE_NOTES.md
+            echo "_(sin entrada en $CHANGELOG para $NUM)_" >> RELEASE_NOTES.md
+          fi
+          echo "----- RELEASE_NOTES.md -----"; cat RELEASE_NOTES.md
+
+      - name: Upload WAR to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ steps.artifact.outputs.version }}
+          tag_name: ${{ steps.artifact.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: ${{ inputs.generate-release-notes }}
+          files: ${{ steps.artifact.outputs.war }}
