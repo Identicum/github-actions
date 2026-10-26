@@ -72,10 +72,11 @@ jobs:
     permissions:
       packages: write
     steps:
-      - name: Delete old untagged images
-        uses: actions/delete-package-versions@v5
+      - name: Delete untagged images (multi-arch aware)
+        uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package-name: ${{ inputs.image_name }} 
-          package-type: 'container'
-          delete-only-untagged-versions: 'true'
-          min-versions-to-keep: 30
+          package: ${{ inputs.image_name }}
+          delete-untagged: true
+          delete-ghost-images: true    # indexes whose platform images are already gone
+          delete-partial-images: true  # indexes missing some platform images
+          validate: true               # after cleanup, check that no tagged image is broken
